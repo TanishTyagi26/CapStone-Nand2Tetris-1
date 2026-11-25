@@ -1,203 +1,387 @@
+
 # Nand to Tetris I - Capstone Project Notes & Viva Preparation Guide
 
 **Course:** Nand to Tetris – I (ETCNTC301)  
 **Institution:** School of Engineering & Technology, K.R. Mangalam University  
-**Student Name:** Dev Upadhyay  
-**Roll Number:** 2501730498  
-**Personal Parameter (K):** `98` (Last two digits of roll number)
+**Student Name:** Tanish Tyagi  
+**Roll Number:** 2501730414  
+**Personal Parameter (K):** `14` (Last two digits of roll number)
 
 ---
 
-## 1. Parameter Calculations (Based on K = 98)
+## 1. Parameter Calculations (Based on K = 14)
 
 | Parameter | Formula | Calculated Value |
-| :--- | :--- | :--- |
-| **K** | Last 2 digits of Roll Number | **98** |
-| **Starting Row** | Row $K$ | **Row 98** (Rows 98 to 117) |
-| **Box Height** | Fixed requirement | **20 screen rows** |
-| **Box Width** | $16 \times ((K \bmod 4) + 1)$ | $98 \bmod 4 = 2 \implies 16 \times (2 + 1) =$ **48 pixels** |
-| **Words per Row** | $\text{Width} / 16$ | **3 words (16-bit registers) per row** |
-| **First Row Base Address** | $\text{SCREEN} + 32 \times K$ | $16384 + 32 \times 98 = 16384 + 3136 =$ **19520** |
-| **Last Row Base Address** | $16384 + 32 \times 117$ | $16384 + 3744 =$ **20128** |
-| **Extra Assembler Feature** | $K \bmod 3$ | $98 \bmod 3 = 2 \implies$ **Print warning if same label is written twice** |
+|---|---|---|
+| K | Last 2 digits of Roll Number | **14** |
+| Starting Row | Row K | **Row 14** |
+| Box Height | Fixed requirement | **20 screen rows** |
+| Ending Row | Starting Row + Height - 1 | **Row 33** |
+| Box Width | 16 × ((K mod 4) + 1) | 14 mod 4 = 2 → 16 × 3 = **48 pixels** |
+| Words per Row | Width / 16 | **3 words per row** |
+| First Row Base Address | SCREEN + 32 × K | 16384 + 32 × 14 = **16832** |
+| Last Row Base Address | 16384 + 32 × 33 | **17440** |
+| Extra Assembler Feature | K mod 3 | 14 mod 3 = 2 → **Duplicate-label warning** |
+
+**Total screen words used:** 20 × 3 = 60 words.
 
 ---
 
 ## 2. Understanding Hack Screen Memory Architecture
 
-* **Screen Dimensions:** 256 rows high $\times$ 512 pixels wide.
-* **Screen Base Address:** `16384` (`0x4000`).
-* **Words per Row:** 512 pixels $/ 16$ bits per word $= 32$ 16-bit memory words per row.
-* **Row Address Formula:** $\text{Address} = 16384 + 32 \times \text{row}$.
-* **Pixel Colors:**
-  * In Hack, `0` is binary `0000000000000000` (all 16 pixels **white/clear**).
-  * `-1` is two's complement binary `1111111111111111` (all 16 pixels **black**).
-* **Memory-Mapped Keyboard:** Address `24576` (`KBD`).
-  * If no key is pressed, `RAM[24576] == 0`.
-  * If any key is pressed, `RAM[24576] != 0` (holds the ASCII key code).
+- **Screen Dimensions:** 256 rows high × 512 pixels wide.
+- **Screen Base Address:** `16384` (`0x4000`).
+- **Words per Row:** 512 pixels / 16 bits per word = 32 words.
+- **Row Address Formula:**
+
+  `Address = 16384 + 32 × row`
+
+- **Pixel Colors:**
+  - `0` = `0000000000000000` → White / Clear.
+  - `-1` = `1111111111111111` → Black.
+- **Memory-Mapped Keyboard:** Address `24576` (`KBD`).
+  - If no key is pressed, `RAM[24576] == 0`.
+  - If a key is pressed, `RAM[24576] != 0`.
 
 ---
 
 ## 3. How the Files Work
 
 ### A. `assembler.py` (Two-Pass Python Assembler)
-The assembler translates human-readable assembly instructions (`.asm`) into 16-bit machine instructions (`.hack`).
 
-1. **Pass 1 (Label Collection & Duplicate Detection):**
-   * Reads the file line by line.
-   * Strips out comments (`// ...`) and whitespace.
-   * Keeps a running counter of ROM instructions (`rom_address`).
-   * When it sees a label like `(MAIN_LOOP)`:
-     * **Feature for $K \bmod 3 = 2$:** Checks if `MAIN_LOOP` has already been defined in `user_labels`. If yes, prints a clear warning showing the line number and previous address.
-     * Records `symbol_table["MAIN_LOOP"] = rom_address`.
-2. **Pass 2 (Binary Code Generation):**
-   * **A-Instructions (`@value` or `@symbol`):**
-     * If numbers (e.g., `@19520`), converts directly to 15-bit binary preceded by `0`.
-     * If predefined symbol (e.g., `@KBD`, `@SCREEN`, `@R0`), looks up its standard address.
-     * If a label from Pass 1, looks up its ROM address.
-     * If a new variable (e.g., `@color`, `@row_addr`), assigns it the next available RAM address starting from **RAM 16** (`16, 17, 18, ...`).
-   * **C-Instructions (`dest=comp;jump`):**
-     * Formatted as `111 a c1..c6 d1..d3 j1..j3` (16 bits).
-     * Looks up `comp` (7 bits), `dest` (3 bits), and `jump` (3 bits) in lookup tables.
-3. **Symbols Export:**
-   * At the end of assembly, writes `symbols.txt` containing user-defined labels and variables with their assigned addresses (e.g., `MAIN_LOOP = 0`, `color = 16`).
+The assembler translates Hack assembly instructions (`.asm`) into 16-bit binary machine instructions (`.hack`).
 
----
+**Pass 1 – Label Collection and Duplicate Detection**
+
+1. Reads the assembly file line by line.
+2. Removes comments (`// ...`) and unnecessary whitespace.
+3. Maintains a ROM instruction counter.
+4. Identifies labels such as `(MAIN_LOOP)`.
+5. Checks whether a label has already been defined.
+6. If a duplicate label is found, displays a warning with its line number and previous address.
+
+**Pass 2 – Binary Code Generation**
+
+- **A-Instructions (`@value` or `@symbol`):**
+  - Numeric values are converted into 15-bit binary and prefixed with `0`.
+  - Predefined symbols such as `@KBD`, `@SCREEN`, and `@R0` use standard addresses.
+  - Labels use their ROM addresses from Pass 1.
+  - New variables receive RAM addresses starting from 16.
+
+- **C-Instructions (`dest=comp;jump`):**
+  - Follow the 16-bit Hack instruction format.
+  - Begin with `111`.
+  - Contain computation, destination, and jump fields.
+  - Use lookup tables to generate binary machine code.
+
+**Symbols Export**
+
+The assembler generates `symbols.txt`, containing labels and variables with their assigned addresses.
+
+Examples:
+
+```text
+MAIN_LOOP = 0
+color = 16
+row_addr = 17
+```
+
+**Extra Feature for K mod 3 = 2:**
+
+The assembler detects duplicate user-defined labels and prints a warning instead of silently replacing the original label address.
 
 ### B. `Box.asm` (Screen Drawing Program)
-Contains an infinite loop using clean nested loops:
-* **Keyboard Polling:**
-  * Checks `@KBD`. If `D == 0`, sets `color = 0` (clear).
-  * If `D != 0`, sets `color = -1` (black).
-* **Outer Loop (`ROW_LOOP`):**
-  * Runs for `row_count = 20` iterations.
-  * Starts at `row_addr = 19520` (Row 98).
-  * Advances down by adding 32 words each row (`row_addr += 32`).
-* **Inner Loop (`COL_LOOP`):**
-  * Runs for `col_count = 3` words (48 pixels).
-  * Writes `color` to `RAM[col_addr]`.
-  * Advances horizontally to the next word (`col_addr += 1`).
-* **Comment on Every Line:** Every single line has a clear inline comment.
 
----
+This program continuously checks the keyboard and draws or clears a rectangular area on the Hack screen.
+
+**Keyboard Polling**
+
+- Checks the keyboard using `@KBD`.
+- If `D == 0`, sets `color = 0` (white).
+- If `D != 0`, sets `color = -1` (black).
+
+**Outer Loop (`ROW_LOOP`)**
+
+- Executes for 20 rows.
+- Starts at screen address `16832` (row 14).
+- Advances by 32 words after each row.
+- Covers rows 14 through 33.
+
+**Inner Loop (`COL_LOOP`)**
+
+- Executes for 3 words per row.
+- Writes the selected color into screen memory.
+- Advances horizontally by one word each iteration.
+- Each word represents 16 horizontal pixels.
+
+**Result:**
+
+A 48-pixel-wide rectangular area, 20 screen rows tall, is continuously drawn in black while a key is pressed and cleared when no key is pressed.
 
 ### C. `compare.py` (Validation Tool)
-* Automatically verifies generated `.hack` files against official reference `.hack` files line by line.
-* Tested and passed 100% on:
-  * `Add.asm` (6/6 instructions matched)
-  * `Max.asm` (16/16 instructions matched)
-  * `Rect.asm` (25/25 instructions matched)
-  * `Pong.asm` (27,483/27,483 instructions matched)
+
+- Compares generated `.hack` files with official reference files.
+- Checks machine instructions line by line.
+- Displays matching instructions or differences.
+- Supports individual file comparisons and batch comparisons.
+
+Supported standard test programs:
+
+- `Add`
+- `Max`
+- `Rect`
+- `Pong`
+
+**Important:** A test is considered passed only after the corresponding official reference file is available and the comparison reports `PERFECT MATCH`.
 
 ---
 
-## 4. Live Viva Modification Cheat Sheet (Crucial for 5-Min Viva!)
+## 4. Live Viva Modification Cheat Sheet
 
-During the viva, the examiner will likely ask you:  
-*"Make a small change to move the box, change its size, or change its color."*
+The examiner may ask you to move the box, change its size, or invert its colors.
 
-Here are the **exact lines** in `Box.asm` to change:
+### 1. Move the Box Down or Up
 
-### 1. Move the Box Down or Up (Change Starting Row)
-* **Target Line:** Line 16
-  ```hack
-  @19520           // Screen start address for row 98: 16384 + (32 * 98) = 19520
-  ```
-* **How to change:**
-  * **To move down to row 120:**  
-    Formula: $16384 + (32 \times 120) = 16384 + 3840 = 20224$.  
-    Change `@19520` to `@20224`.
-  * **To move up to row 10 (near top):**  
-    Formula: $16384 + (32 \times 10) = 16384 + 320 = 16704$.  
-    Change `@19520` to `@16704`.
+Find the starting address instruction in `Box.asm`:
+
+```hack
+@16832
+```
+
+Formula:
+
+`SCREEN + (32 × Starting Row)`
+
+Examples:
+
+**Move to row 20:**
+
+`16384 + (32 × 20) = 17024`
+
+Change `@16832` to `@17024`.
+
+**Move to row 10:**
+
+`16384 + (32 × 10) = 16704`
+
+Change `@16832` to `@16704`.
+
+### 2. Change the Box Width
+
+Find the instruction:
+
+```hack
+@3
+```
+
+This represents 3 words per row.
+
+Examples:
+
+- 16 pixels: Change `@3` to `@1`.
+- 32 pixels: Change `@3` to `@2`.
+- 64 pixels: Change `@3` to `@4`.
+- 128 pixels: Change `@3` to `@8`.
+
+Formula:
+
+`Width = Number of Words × 16`
+
+### 3. Change the Box Height
+
+Find the instruction:
+
+```hack
+@20
+```
+
+This represents the number of screen rows.
+
+Examples:
+
+- 10 rows: Change `@20` to `@10`.
+- 30 rows: Change `@20` to `@30`.
+- 40 rows: Change `@20` to `@40`.
+
+Remember: the height should remain within the available screen boundaries.
+
+### 4. Invert the Colors
+
+Find these instructions in `Box.asm`:
+
+```hack
+// When a key is pressed
+M=-1
+
+// When no key is pressed
+M=0
+```
+
+Swap them:
+
+```hack
+// When a key is pressed
+M=0
+
+// When no key is pressed
+M=-1
+```
+
+Now the selected area will be white while a key is pressed and black when released.
+
+### 5. Move the Box Horizontally
+
+Each screen word represents 16 horizontal pixels.
+
+The current starting address is:
+
+`16832`
+
+To move 14 words (224 pixels) to the right:
+
+`16832 + 14 = 16846`
+
+Change:
+
+```hack
+@16832
+```
+
+to:
+
+```hack
+@16846
+```
+
+This places the 48-pixel-wide box approximately in the horizontal center of the screen.
 
 ---
 
-### 2. Change the Box Width (Horizontal Size)
-* **Target Line:** Line 32
-  ```hack
-  @3               // Box width = 3 words per row (3 * 16 = 48 pixels wide)
-  ```
-* **How to change:**
-  * **To make it narrower (16 pixels / 1 word):**  
-    Change `@3` to `@1`.
-  * **To make it wider (64 pixels / 4 words):**  
-    Change `@3` to `@4`.
-  * **To make it 128 pixels (8 words):**  
-    Change `@3` to `@8`.
+## 5. Likely Viva Questions and Answers
+
+**Q1. Why is an assembler built in two passes instead of one?**
+
+An assembler uses two passes because a program can jump to a label that appears later in the code. This is called a forward reference.
+
+In Pass 1, the assembler collects all labels and their ROM addresses. In Pass 2, it translates the instructions into binary using the collected addresses.
+
+**Q2. Why do user variables start at RAM address 16?**
+
+RAM addresses 0 to 15 are reserved for registers R0 to R15. Therefore, general-purpose variables start at RAM address 16.
+
+**Q3. Why do we add 32 to move down one screen row?**
+
+The Hack screen has 512 pixels per row. Each memory word stores 16 pixels.
+
+`512 / 16 = 32 words`
+
+Therefore, moving down one row requires adding 32 to the screen memory address.
+
+**Q4. How does memory-mapped I/O work in Hack?**
+
+Hack uses memory addresses to communicate with input and output devices.
+
+- Screen memory occupies addresses 16384–24575.
+- Keyboard input is mapped to address 24576.
+
+The CPU reads or writes these addresses to interact with the devices.
+
+**Q5. What extra feature did you implement in your assembler?**
+
+My roll number ends in 14.
+
+`14 mod 3 = 2`
+
+Therefore, my extra feature is duplicate-label detection. If the same user-defined label is declared more than once, the assembler prints a warning containing the duplicate label and its line number.
+
+**Q6. What is the difference between `.asm` and `.hack` files?**
+
+- `.asm` contains human-readable Hack assembly instructions.
+- `.hack` contains 16-bit binary machine instructions that the Hack computer can execute.
+
+**Q7. What does the A-instruction do?**
+
+An A-instruction loads a 15-bit value or address into the A register.
+
+Example:
+
+```hack
+@16384
+```
+
+**Q8. What does the C-instruction do?**
+
+A C-instruction performs a computation, optionally stores the result in a destination, and optionally performs a jump.
+
+Example:
+
+```hack
+D=M
+```
+
+It copies the value stored at the memory address in A into the D register.
+
+**Q9. What is the purpose of the ALU?**
+
+The Arithmetic Logic Unit performs arithmetic and logical operations such as addition, subtraction, AND, and NOT.
+
+**Q10. What is the purpose of the Program Counter (PC)?**
+
+The PC stores the address of the next instruction to execute. It normally increments after each instruction or loads a new address when a jump occurs.
 
 ---
 
-### 3. Change the Box Height (Vertical Size)
-* **Target Line:** Line 20
-  ```hack
-  @20              // Box height = 20 rows (row 98 to row 117)
-  ```
-* **How to change:**
-  * **To make it 40 rows tall:**  
-    Change `@20` to `@40`.
-  * **To make it a square (48 pixels high = 48 rows):**  
-    Change `@20` to `@48`.
+## 6. How to Re-Assemble and Test
 
----
+After modifying `Box.asm`, open the terminal in your capstone directory.
 
-### 4. Invert Colors (Draw White When Pressed, Black When Released)
-* **Target Lines:** Line 10 and Line 14
-  * In `Box.asm`:
-    ```hack
-    // Line 10 (when key is pressed):
-    M=-1            // Set color = -1 (black)
-    ...
-    // Line 14 (when key is released):
-    M=0             // Set color = 0 (white)
-    ```
-* **How to change:**
-  * Swap them: make Line 10 `M=0` and Line 14 `M=-1`.
-  * Now the screen will be black by default, and pressing a key will carve out a white box!
+**Step 1 – Assemble the program**
 
----
-
-### 5. Move the Box Horizontally (Away from the Left Edge)
-* **Target Line:** Line 16
-  * Each word offset moves the box 16 pixels to the right.
-  * E.g., to place the box in the horizontal middle of the row (offset 14 words):  
-    Add 14 to starting address: $19520 + 14 = 19534$.  
-    Change `@19520` to `@19534`.
-
----
-
-## 5. Likely Viva Questions & Ready Answers
-
-**Q1: Why is an assembler built in two passes instead of one?**  
-> *"In assembly, code can jump forward to a label that hasn't been defined yet (forward reference), such as `@OUTPUT_FIRST` before `(OUTPUT_FIRST)` appears. In Pass 1, we scan the entire program to map all label names to their exact ROM addresses. In Pass 2, with all label addresses known, we can translate every instruction into binary without errors."*
-
-**Q2: Why do user variables start at RAM address 16?**  
-> *"Addresses 0 to 15 are reserved for the 16 virtual registers (`R0` through `R15`, as well as `SP`, `LCL`, `ARG`, `THIS`, `THAT`). Therefore, general-purpose user variables start immediately after them at RAM[16]."*
-
-**Q3: Why do we add 32 to move down one row on the screen?**  
-> *"The Hack screen has a resolution of $512 \times 256$ pixels. Each memory word is 16 bits wide, so one horizontal line of 512 pixels requires $512 / 16 = 32$ memory words. Thus, moving down one row requires advancing 32 memory addresses."*
-
-**Q4: How does memory-mapped I/O work in the Hack computer?**  
-> *"The Hack computer does not use special I/O instructions like `IN` or `OUT`. Instead, the screen memory (`16384` to `24575`) and keyboard register (`24576`) are mapped directly into the CPU's memory address space. Reading or writing to those memory addresses automatically reads the keyboard or updates the screen pixels."*
-
-**Q5: What is the extra feature implemented in your assembler?**  
-> *"Since my roll number ends in 98, $98 \bmod 3 = 2$. My extra feature detects and prints a clear warning if a user writes the same label twice in their code, reporting the duplicate declaration and line number."*
-
----
-
-## 6. How to Re-Assemble and Test After Making Changes
-
-To re-assemble after modifying `Box.asm`:
 ```cmd
-cd capstone
 python assembler.py Box.asm
 ```
-This updates:
-1. `Box.hack` (ready to load into CPU Emulator)
-2. `symbols.txt` (shows updated symbol addresses)
 
-To verify the test suite anytime:
+This generates:
+
+1. `Box.hack` – Binary machine code.
+2. `symbols.txt` – Symbol table containing labels and variables.
+
+**Step 2 – Compare official test files**
+
 ```cmd
 python compare.py
 ```
-*(All 4 tests: Add, Max, Rect, Pong will report `PASSED`).*
+
+The comparison tool checks Add, Max, Rect, and Pong when their source and official reference files are available.
+
+**Step 3 – Test the Hack computer**
+
+1. Open the official Nand2Tetris Hardware Simulator.
+2. Load and test `CPU.hdl`, `Memory.hdl`, and `Computer.hdl` using the corresponding official test scripts.
+3. Open the CPU Emulator.
+4. Load `Box.hack`.
+5. Run the program.
+6. Press and release keys to verify that the rectangle changes between black and white.
+
+---
+
+## 7. Important Project Values – Quick Revision
+
+| Item | Value |
+|---|---|
+| Student | Tanish Tyagi |
+| Roll Number | 2501730414 |
+| K | 14 |
+| Starting Screen Row | 14 |
+| Ending Screen Row | 33 |
+| Height | 20 rows |
+| Width | 48 pixels |
+| Words per Row | 3 |
+| Starting Screen Address | 16832 |
+| Last Row Base Address | 17440 |
+| Screen Base Address | 16384 |
+| Keyboard Address | 24576 |
+| Extra Feature | Duplicate-label warning |
+| Assembler Type | Two-pass assembler |
+| Box Machine Code | 53 instructions |
+

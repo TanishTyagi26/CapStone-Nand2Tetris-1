@@ -1,27 +1,55 @@
+
 """
 compare.py - Hack Machine Code (.hack) Comparison Tool
+
 Compares student assembler output with official Nand2Tetris .hack files.
 
 Usage:
-    python compare.py                       # Runs comparison on all available test files
-    python compare.py Add                   # Compares Add.hack with Add_official.hack
-    python compare.py my.hack official.hack  # Compares any two specific files
+    python compare.py
+    python compare.py Add
+    python compare.py my.hack official.hack
 """
 
 import sys
 import os
+import subprocess
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+SEARCH_DIRS = [
+    BASE_DIR,
+    os.path.join(BASE_DIR, "tests"),
+    os.path.join(BASE_DIR, "capstone"),
+    os.path.join(BASE_DIR, "capstone", "tests")
+]
+
+
+def find_file(filename):
+    """Search for a file in available project directories."""
+
+    for directory in SEARCH_DIRS:
+        path = os.path.join(directory, filename)
+
+        if os.path.isfile(path):
+            return path
+
+    return None
+
 
 def compare_hack_files(actual_path, expected_path, test_name=""):
     """
-    Compares two .hack files line by line.
+    Compare two .hack files line by line.
     Returns (is_match, total_lines, diff_list).
     """
+
     name_str = f" [{test_name}]" if test_name else ""
-    print(f"\n=======================================================")
+
+    print("\n=======================================================")
     print(f"Comparing{name_str}:")
     print(f"  Actual   : {actual_path}")
     print(f"  Expected : {expected_path}")
-    print(f"=======================================================")
+    print("=======================================================")
 
     if not os.path.exists(actual_path):
         print(f"[FAIL] Output file not found: {actual_path}")
@@ -29,7 +57,6 @@ def compare_hack_files(actual_path, expected_path, test_name=""):
 
     if not os.path.exists(expected_path):
         print(f"[SKIP] Official comparison file not found: {expected_path}")
-        print(f"       -> Please supply the official file to test against.")
         return None, 0, []
 
     with open(actual_path, "r", encoding="utf-8") as f:
@@ -45,105 +72,136 @@ def compare_hack_files(actual_path, expected_path, test_name=""):
     max_len = max(total_actual, total_expected)
 
     for i in range(max_len):
+
         act = actual_lines[i] if i < total_actual else "<MISSING - EOF>"
         exp = expected_lines[i] if i < total_expected else "<EXTRA LINE>"
+
         if act != exp:
             diffs.append((i + 1, act, exp))
 
     if not diffs:
-        print(f"[PASS] PERFECT MATCH! All {total_expected} instructions match exactly.")
+        print(f"[PASS] PERFECT MATCH! All {total_expected} instructions match.")
         return True, total_expected, []
-    else:
-        print(f"[FAIL] Found {len(diffs)} difference(s) (Total lines: actual={total_actual}, expected={total_expected}):")
-        # Print first 10 differences
-        for line_num, act, exp in diffs[:10]:
-            print(f"  Line {line_num:4d}:")
-            print(f"    Your Output    : {act}")
-            print(f"    Official Match : {exp}")
-        if len(diffs) > 10:
-            print(f"  ... and {len(diffs) - 10} more differences.")
-        return False, total_expected, diffs
+
+    print(
+        f"[FAIL] Found {len(diffs)} difference(s) "
+        f"(actual={total_actual}, expected={total_expected}):"
+    )
+
+    for line_num, act, exp in diffs[:10]:
+        print(f"\n  Line {line_num}:")
+        print(f"    Your Output    : {act}")
+        print(f"    Official Match : {exp}")
+
+    if len(diffs) > 10:
+        print(f"\n  ... and {len(diffs) - 10} more differences.")
+
+    return False, total_expected, diffs
 
 
 def run_all_tests():
-    """
-    Runs automated comparisons for Add, Max, Rect, and Pong.
-    Searches both current directory and tests/ directory.
-    """
+    """Run comparisons for Add, Max, Rect, and Pong."""
+
     targets = ["Add", "Max", "Rect", "Pong"]
     results = {}
 
-    search_dirs = [".", "tests", "capstone/tests", "capstone"]
-
     for name in targets:
-        # Locate actual .hack
-        act_path = None
-        for d in search_dirs:
-            p = os.path.join(d, f"{name}.hack")
-            if os.path.exists(p):
-                act_path = p
-                break
 
-        # Locate official .hack (supports Name_official.hack, official/Name.hack, etc.)
-        exp_path = None
-        possible_exp = [
+        actual_path = find_file(f"{name}.hack")
+
+        expected_names = [
             f"{name}_official.hack",
             f"{name}.cmp",
             f"official_{name}.hack",
-            os.path.join("official", f"{name}.hack"),
-            os.path.join("tests", f"{name}_official.hack"),
-            os.path.join("tests", f"{name}.cmp"),
+            os.path.join("official", f"{name}.hack")
         ]
-        for candidate in possible_exp:
-            for d in ["."] + search_dirs:
-                p = os.path.join(d, candidate)
-                if os.path.exists(p):
-                    exp_path = p
-                    break
-            if exp_path:
+
+        expected_path = None
+
+        for filename in expected_names:
+            expected_path = find_file(filename)
+
+            if expected_path:
                 break
 
-        if not act_path:
-            # Try assembling if .asm is found
-            asm_found = None
-            for d in search_dirs:
-                p = os.path.join(d, f"{name}.asm")
-                if os.path.exists(p):
-                    asm_found = p
-                    break
-            if asm_found:
-                print(f"[*] Assembling {asm_found} first...")
-                import subprocess
-                subprocess.run([sys.executable, "assembler.py", asm_found])
-                act_path = os.path.splitext(asm_found)[0] + ".hack"
+        if not actual_path:
 
-        if act_path and exp_path:
-            matched, total, _ = compare_hack_files(act_path, exp_path, test_name=name)
+            asm_path = find_file(f"{name}.asm")
+
+            if asm_path:
+                assembler_path = find_file("assembler.py")
+
+                if not assembler_path:
+                    print("\n[ERROR] assembler.py not found.")
+                    results[name] = "ASSEMBLER NOT FOUND"
+                    continue
+
+                print(f"\n[*] Assembling {asm_path} first...")
+
+                subprocess.run(
+                    [
+                        sys.executable,
+                        assembler_path,
+                        os.path.basename(asm_path)
+                    ],
+                    cwd=os.path.dirname(asm_path),
+                    check=False
+                )
+
+                actual_path = os.path.splitext(asm_path)[0] + ".hack"
+
+        if actual_path and expected_path:
+
+            matched, total, _ = compare_hack_files(
+                actual_path,
+                expected_path,
+                test_name=name
+            )
+
             results[name] = "PASSED" if matched else "FAILED"
-        elif act_path and not exp_path:
-            print(f"\n[{name}] Actual output exists ({act_path}), but official reference file not found yet.")
-            print(f"       Drop the official {name}.hack as tests/{name}_official.hack to test.")
+
+        elif actual_path:
+
+            print(f"\n[{name}] Actual output exists: {actual_path}")
+            print(f"Official reference file not found.")
             results[name] = "WAITING FOR OFFICIAL FILE"
+
         else:
-            print(f"\n[{name}] Neither .hack nor .asm found in workspace.")
+
+            print(f"\n[{name}] Neither .hack nor .asm file found.")
             results[name] = "NOT FOUND"
 
     print("\n" + "=" * 55)
     print("              TEST SUMMARY REPORT")
     print("=" * 55)
+
     for name, status in results.items():
         print(f"  {name:10s} : {status}")
+
     print("=" * 55 + "\n")
 
 
 if __name__ == "__main__":
+
     if len(sys.argv) == 3:
-        # Direct two-file comparison
+
+        # Compare any two specified files
         compare_hack_files(sys.argv[1], sys.argv[2])
+
     elif len(sys.argv) == 2:
-        # Single program comparison by name, e.g. python compare.py Add
+
+        # Compare a program by name
         target = sys.argv[1].replace(".hack", "").replace(".asm", "")
-        compare_hack_files(f"tests/{target}.hack", f"tests/{target}_official.hack", test_name=target)
+
+        actual = find_file(f"{target}.hack")
+        expected = find_file(f"{target}_official.hack")
+
+        if actual and expected:
+            compare_hack_files(actual, expected, test_name=target)
+        else:
+            print(f"[ERROR] Could not find both files for {target}.")
+
     else:
-        # Default: batch test all 4 standard programs
+
+        # Run all standard tests
         run_all_tests()
